@@ -1,26 +1,9 @@
 import os
-import numpy as np
-import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 
-from torch.hub import load_state_dict_from_url
-from torch.autograd import Variable
-
-import torchvision
-from torchvision import models
-import torchvision.transforms as transforms
-
-from torchsummary import summary
-
-from pathlib import Path
-
-from PIL import Image
-
-import datetime
 
 class myVGG(nn.Module):
 
@@ -136,18 +119,18 @@ class vgg16_bn_test(nn.Module):
             nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
             nn.BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
             nn.ReLU(inplace=False),
-            nn.MaxPool2d(2, 2),
+            # nn.MaxPool2d(2, 2),
 
-            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            nn.BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
-            nn.ReLU(inplace=False),
-            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            nn.BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
-            nn.ReLU(inplace=False),
-            nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
-            nn.BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
-            nn.ReLU(inplace=False),
-            nn.MaxPool2d(2, 2),
+            # nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            # nn.BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            # nn.ReLU(inplace=False),
+            # nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            # nn.BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            # nn.ReLU(inplace=False),
+            # nn.Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1)),
+            # nn.BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True),
+            # nn.ReLU(inplace=False),
+            # nn.MaxPool2d(2, 2),
         )
 
         # self.avepool1 = nn.AdaptiveAvgPool2d((7,7))

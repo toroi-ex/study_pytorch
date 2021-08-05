@@ -1,23 +1,16 @@
-import matplotlib.pyplot as plt
+import torch
 import os
 import shutil
 
-import torch
 import torch.nn as nn
 import torch.optim as optim
 
-import torchvision.transforms as transforms
-from torch.utils.data import Subset
-from torchvision.utils import save_image
+from torchvision import models
 
-#focal_loss
-from vgg16_bn.focalLoss import FocalLoss
+from torch.utils.data import Subset
 
 from torchsummary import summary
 
-from pathlib import Path
-
-from PIL import Image
 import cv2
 
 import datetime
@@ -25,95 +18,10 @@ import datetime
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score
 
-from vgg16_bn.model import vgg16_bn_test
-# from new_model.model import vgg16_bn_test
-
-
-class MyDataset(torch.utils.data.Dataset):
-
-    def __init__(self, imageSize, dir_path, transform=None):
-        self.transform = transforms.Compose([
-            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            transforms.RandomHorizontalFlip(0.5),
-            transforms.RandomVerticalFlip(0.5),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
-        ])
-
-        self.image_paths = [str(p) for p in Path(dir_path).glob("**/*.png")]
-
-        self.data_num = len(self.image_paths)
-        self.classes = ['broken', 'correct']
-        self.class_to_idx = {'broken': 1, 'correct': 0}
-
-    def __len__(self):
-        return self.data_num
-
-    def __getitem__(self, idx):
-        p = self.image_paths[idx]
-        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
-
-        if self.transform:
-            out_data = self.transform(image)
-
-        out_label = p.split("/") #フォルダの名前を”/”で分割
-        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
-
-        return out_data, out_label
-
-
-class MyDatasetEval(torch.utils.data.Dataset):
-
-    def __init__(self, imageSize, dir_path, transform=None):
-        self.transform = transforms.Compose([
-            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            # transforms.RandomHorizontalFlip(0.5),
-            # transforms.RandomVerticalFlip(0.5),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
-        ])
-
-        self.image_paths = [str(p) for p in Path(dir_path).glob("**/*.png")]
-
-        self.data_num = len(self.image_paths)
-        self.classes = ['broken', 'correct']
-        self.class_to_idx = {'broken': 1, 'correct': 0}
-
-    def __len__(self):
-        return self.data_num
-
-    def __getitem__(self, idx):
-        p = self.image_paths[idx]
-        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
-
-        if self.transform:
-            out_data = self.transform(image)
-
-        out_label = p.split("/") #フォルダの名前を”/”で分割
-        result_label = out_label[-1]
-        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
-
-        return out_data, out_label, result_label
-
-
-#使わない
-def get_device(use_gpu):
-    if use_gpu and torch.cuda.is_available():
-        # これを有効にしないと、計算した勾配が毎回異なり、再現性が担保できない。
-        torch.backends.cudnn.deterministic = True
-        return torch.device("cuda:0")
-    else:
-        return torch.device("cpu")
+from dataloader import MyDataset, MyDatasetEval
 
 
 def main():
-    # net = myVGG()
-    # model = models.vgg16_bn(pretrained=True).features
-    # net.classifier[6] = nn.Linear(in_features=4096, out_features=2)
-    # url = 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth'
-
-    # state_dict = load_state_dict_from_url(url=url,progress=True)
-    # net.load_state_dict(state_dict, strict=False)
 
     # training set
     data_set = MyDataset(200, dir_path=train_data_dir)
@@ -124,6 +32,7 @@ def main():
     for i in range(len(data_set)):
         label_list.append(data_set[i][1])
 
+    total_loss = 0
     total_size = 0
 
     #cross_validationごとのclassification_report
@@ -140,23 +49,35 @@ def main():
     f_score = 0
 
     #cross_validation
-    kf = StratifiedKFold(n_splits=3, shuffle=True, random_state=2)
+    kf = StratifiedKFold(n_splits=3, shuffle=True, random_state=0)
 
     #loss function
-    # criterion = nn.CrossEntropyLoss()
-    criterion = FocalLoss(alpha=0.55, gamma=2.0) #alpha=0.65,gamma=2
+    criterion = nn.CrossEntropyLoss()
+    # criterion = FocalLoss(alpha=0.25, gamma=2)
 
     for fold_idx, idx in enumerate(kf.split(data_set, label_list)):
 
         # モデルを構築
-        # net = vgg16_bn_test().to(device)
-        net = vgg16_bn_test()
+        # net = models.compare(pretrained=True)
+        net = models.resnet34(pretrained=True)
+
+        # print(net)
+
+        #vgg16の全結合
+        # num_ftrs = net.classifier[6].in_features
+        # net.classifier[6] = nn.Linear(num_ftrs, 2)
+
+        #resnetの全結合
+        num_ftrs = net.fc.in_features
+        net.fc = nn.Linear(num_ftrs, 2)
+
+        # print(net)
+        net = net.to(device)
 
         print("ネットワーク設定完了：学習をtrainモードで開始します")
 
         # モデルの重みを読み込み
-        net.to(device)
-        net.load_state_dict(torch.load(weight_pash), strict=False)
+        # net.load_state_dict(torch.load(weight_pash), strict=False)
 
         # 最適化
         optimizer = optim.SGD(net.parameters(), lr=0.001)
@@ -175,15 +96,15 @@ def main():
         train_loss_value = []  # trainingのlossを保持するlist
         train_acc_value = []  # trainingのaccuracyを保持するlist
 
-        for epoch in range(20):
+        # 同じデータを回学習します
+        for epoch in range(10):
             print("epoch =", epoch + 1)
 
             # 今回の学習効果を保存するための変数
             running_loss = 0.0
-            input_num = 0
 
             for batch_idx, data in enumerate(train_loader):  # dataがラベルと画像情報の2つの情報を持つ
-                total_loss = 0
+
                 # データ整理
                 inputs, labels = data
                 inputs = inputs.to(device)
@@ -205,8 +126,6 @@ def main():
                 loss.backward()
                 optimizer.step()
 
-                input_num += len(inputs)
-
             #     if batch_idx % 1 == 0:
             #         now = datetime.datetime.now()
             #         print('[{}] Train Epoch: {} [{}/{} ({:.0f}%)]\tAverage loss: {:.6f}'.format(
@@ -216,9 +135,9 @@ def main():
             # print("running_loss=", running_loss * 50 / len(dataloader.dataset))
                 if batch_idx % 1 == 0:
                     now = datetime.datetime.now()
-                    print('[{}] Train Epoch: {} [{}/{} ({:.0f}%)]\tloss: {:.6f}'.format(
-                        now, epoch+1, input_num, len(train_loader.dataset), 100. * batch_idx / len(train_loader),
-                                    total_loss))
+                    print('[{}] Train Epoch: {} [{}/{} ({:.0f}%)]\tAverage loss: {:.6f}'.format(
+                        now, epoch+1, batch_idx * len(inputs), len(train_loader.dataset), 100. * batch_idx / len(train_loader),
+                                    total_loss / total_size))
             train_loss_value.append(running_loss / len(train_loader.dataset))  # traindataのlossをグラフ描画のためにlistに保持
             print("train_loss=", running_loss / len(train_loader))
 
@@ -303,18 +222,18 @@ def main():
 
 if __name__ == "__main__":
 
-    # train_data_dir = '/home/toui/デスクトップ/ori/add_testUseGan'
-    train_data_dir = '/home/toui/デスクトップ/ori/add_testUse'
+    train_data_dir = '/home/toui/デスクトップ/ori/add_testUseGan'
+    # train_data_dir = '/home/toui/デスクトップ/ori/add_testUse'
 
-    img_save_dir = "/home/toui/PycharmProjects/toui_pytorch/vgg16_bn/img"
-
-    weight_pash = "vgg16_bn.pth"
+    img_save_dir = "/home/toui/PycharmProjects/toui_pytorch/compare/img"
 
     shutil.rmtree(img_save_dir)
 
     os.makedirs(img_save_dir, exist_ok=True)
     os.makedirs(os.path.join(img_save_dir, "broken"), exist_ok=True)
     os.makedirs(os.path.join(img_save_dir, "correct"), exist_ok=True)
+
+    # weight_pash = "vgg16_bn.pth"
 
     device = torch.device("cuda:0")
 

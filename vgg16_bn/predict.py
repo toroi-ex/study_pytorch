@@ -6,7 +6,7 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, confusion_matrix, precision_score
 
 from pathlib import Path
 
@@ -68,10 +68,11 @@ def test_img():
     # ラベルの表示
     print(' '.join('%5s' % labels for j in range(4)))
 
+
 if __name__ == "__main__":
 
     # net = myVGG()
-    # net = models.vgg16(pretrained=False)
+    # net = models.compare(pretrained=False)
     # net.classifier[6] = nn.Linear(in_features=4096, out_features=2)
     net = vgg16_bn_test()
     net.load_state_dict(torch.load(model_path))
@@ -91,7 +92,9 @@ if __name__ == "__main__":
         Y += [int(l) for l in labels]
 
     print(classification_report(Y, pred, target_names=target_name))
-    #
+    print(confusion_matrix(pred, Y))
+    print(precision_score(pred, Y))
+
     # nb_classes = 2
     #
     # # Initialize the prediction and label lists(tensors)

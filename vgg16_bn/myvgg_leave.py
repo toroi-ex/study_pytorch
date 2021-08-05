@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 import torchvision.transforms as transforms
-from torch.utils.data import Subset
+from torch.utils.data import Subset, TensorDataset
 from torchvision.utils import save_image
 
 #focal_loss
@@ -22,11 +22,11 @@ import cv2
 
 import datetime
 
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedKFold, LeaveOneOut
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score
 
-from vgg16_bn.model import vgg16_bn_test
-# from new_model.model import vgg16_bn_test
+# from vgg16_bn.model import vgg16_bn_test
+from new_model.model import vgg16_bn_test
 
 
 class MyDataset(torch.utils.data.Dataset):
@@ -36,8 +36,9 @@ class MyDataset(torch.utils.data.Dataset):
             transforms.Resize(imageSize, interpolation=Image.BILINEAR),
             transforms.RandomHorizontalFlip(0.5),
             transforms.RandomVerticalFlip(0.5),
+            # transforms.ColorJitter(brightness=0.3, contrast=0.3,),
             transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
         self.image_paths = [str(p) for p in Path(dir_path).glob("**/*.png")]
@@ -67,10 +68,8 @@ class MyDatasetEval(torch.utils.data.Dataset):
     def __init__(self, imageSize, dir_path, transform=None):
         self.transform = transforms.Compose([
             transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            # transforms.RandomHorizontalFlip(0.5),
-            # transforms.RandomVerticalFlip(0.5),
             transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
 
         self.image_paths = [str(p) for p in Path(dir_path).glob("**/*.png")]
@@ -96,29 +95,45 @@ class MyDatasetEval(torch.utils.data.Dataset):
         return out_data, out_label, result_label
 
 
-#使わない
-def get_device(use_gpu):
-    if use_gpu and torch.cuda.is_available():
-        # これを有効にしないと、計算した勾配が毎回異なり、再現性が担保できない。
-        torch.backends.cudnn.deterministic = True
-        return torch.device("cuda:0")
-    else:
-        return torch.device("cpu")
+class MydatasetGan(torch.utils.data.Dataset):
+
+    def __init__(self, imageSize, gan_path, transform=None):
+        self.transform = transforms.Compose([
+            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
+            transforms.RandomHorizontalFlip(0.5),
+            transforms.RandomVerticalFlip(0.5),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+
+        self.image_paths = [str(p) for p in Path(gan_path).glob("**/*.png")]
+
+        self.data_num = len(self.image_paths)
+        # self.classes = ['broken', 'correct']
+        self.class_to_idx = {'broken': 1}
+
+    def __len__(self):
+        return self.data_num
+
+    def __getitem__(self, idx):
+        p = self.image_paths[idx]
+        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
+
+        if self.transform:
+            out_data = self.transform(image)
+
+        out_label = p.split("/") #フォルダの名前を”/”で分割
+        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
+
+        return out_data, out_label
 
 
 def main():
-    # net = myVGG()
-    # model = models.vgg16_bn(pretrained=True).features
-    # net.classifier[6] = nn.Linear(in_features=4096, out_features=2)
-    # url = 'https://download.pytorch.org/models/vgg16_bn-6c64b313.pth'
-
-    # state_dict = load_state_dict_from_url(url=url,progress=True)
-    # net.load_state_dict(state_dict, strict=False)
 
     # training set
     data_set = MyDataset(200, dir_path=train_data_dir)
+    data_set_gan = MydatasetGan(200, gan_path=train_only_path)
     data_set_val = MyDatasetEval(200, dir_path=train_data_dir)
-    # dataloader = torch.utils.data.DataLoader(data_set, batch_size=16, shuffle=True)
 
     label_list = []
     for i in range(len(data_set)):
@@ -126,30 +141,26 @@ def main():
 
     total_size = 0
 
-    #cross_validationごとのclassification_report
-    report1 = ""
-    report2 = ""
-    report3 = ""
+    file_list = os.listdir(os.path.join(train_data_dir, 'broken'))
 
-    conf1 = ""
-    conf2 = ""
-    conf3 = ""
+    count = 0
 
-    pre_score = 0
-    re_score = 0
-    f_score = 0
+    pred = []
+    Y = []
 
     #cross_validation
-    kf = StratifiedKFold(n_splits=3, shuffle=True, random_state=2)
+    kf = StratifiedKFold(n_splits=len(file_list), shuffle=True, random_state=8)
 
     #loss function
     # criterion = nn.CrossEntropyLoss()
-    criterion = FocalLoss(alpha=0.55, gamma=2.0) #alpha=0.65,gamma=2
+    criterion = FocalLoss(alpha=0.65, gamma=2.0) #alpha=0.65,gamma=2
 
     for fold_idx, idx in enumerate(kf.split(data_set, label_list)):
 
+        count += 1
+        print(str(count)+" number")
+
         # モデルを構築
-        # net = vgg16_bn_test().to(device)
         net = vgg16_bn_test()
 
         print("ネットワーク設定完了：学習をtrainモードで開始します")
@@ -163,19 +174,22 @@ def main():
 
         train_idx, valid_idx = idx
 
-        train_loader = torch.utils.data.DataLoader(Subset(data_set, train_idx), batch_size=16, shuffle=True)
+        #ganをtrainingに加えるためにデータセットを合成
+        train_dataset = Subset(data_set, train_idx) + data_set_gan
+
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
         valid_loader = torch.utils.data.DataLoader(Subset(data_set_val, valid_idx), batch_size=1, shuffle=False)
 
         # trainモードで開始
         net.train()
 
         # modelの全体像を表示
-        summary(net, input_size=(3, 200, 200))
+        # summary(net, input_size=(3, 200, 200))
 
         train_loss_value = []  # trainingのlossを保持するlist
         train_acc_value = []  # trainingのaccuracyを保持するlist
 
-        for epoch in range(20):
+        for epoch in range(25):
             print("epoch =", epoch + 1)
 
             # 今回の学習効果を保存するための変数
@@ -228,8 +242,8 @@ def main():
 
         #test
         with torch.no_grad():
-            pred = []
-            Y = []
+            pred_tmp = []
+            Y_tmp = []
             target_name = ["correct 0", "broken 1"]
             for batch_idx, data in enumerate(valid_loader):
                 input_val, label_val, image_name = data
@@ -238,11 +252,11 @@ def main():
                 image_name = image_name[0].replace("'", "").replace(",", "")
 
                 output_val = net(input_val)
-                pred += [int(l.argmax()) for l in output_val]
-                Y += [int(l) for l in label_val]
+                pred_tmp += [int(l.argmax()) for l in output_val]
+                Y_tmp += [int(l) for l in label_val]
 
-                if Y[-1] != pred[-1]:
-                    if Y[-1] == 1:
+                if Y_tmp[-1] != pred_tmp[-1]:
+                    if Y_tmp[-1] == 1:
                         mis_image = cv2.imread(os.path.join(train_data_dir, "broken/{filename}".format(filename=image_name)))
                         # print(os.path.join(train2, "{filename}".format(filename=image_name)))
                         cv2.imwrite(os.path.join(img_save_dir, "broken/{filename}".format(filename=image_name)), mis_image)
@@ -254,63 +268,43 @@ def main():
             # save_imageはネットの出力を保存する
             # save_image(output_val, os.path.join(img_save_dir, "{filename}".format(filename=image_name)), nrow=1)
 
-            pre_score += precision_score(Y, pred)
-            re_score += recall_score(Y, pred)
-            f_score += f1_score(Y, pred)
+            print(classification_report(Y_tmp, pred_tmp, target_names=target_name))
+            print(confusion_matrix(Y_tmp, pred_tmp))
 
-            print(classification_report(Y, pred, target_names=target_name))
-            print(confusion_matrix(Y, pred))
+            pred.extend(pred_tmp)
+            Y.extend(Y_tmp)
 
-            if fold_idx == 0:
-                report1 = classification_report(Y, pred, target_names=target_name)
-                conf1 = confusion_matrix(Y, pred)
-                # モデルを保存
-                model_path = 'model_cross1.pth'
-                torch.save(net.state_dict(), model_path)
-            elif fold_idx == 1:
-                report2 = classification_report(Y, pred, target_names=target_name)
-                conf2 = confusion_matrix(Y, pred)
-                # モデルを保存
-                model_path = 'model_cross2.pth'
-                torch.save(net.state_dict(), model_path)
-            else:
-                report3 = classification_report(Y, pred, target_names=target_name)
-                conf3 = confusion_matrix(Y, pred)
-                # モデルを保存
-                model_path = 'model_cross3.pth'
-                torch.save(net.state_dict(), model_path)
+        model_path = f'leave_model/model_leave{fold_idx}.pth'
+        torch.save(net.state_dict(), model_path)
+
+    pre_score = precision_score(Y, pred)
+    re_score = recall_score(Y, pred)
+    f_score = f1_score(Y, pred)
+
+    report = classification_report(Y, pred, target_names=target_name)
+    conf = confusion_matrix(Y, pred)
 
     conf_exp = "TN FP\nFN TP"
 
-    print("====cross1の結果====")
-    print(report1)
-    print(conf1, "\n", conf_exp)
-    print("====cross2の結果====")
-    print(report2)
-    print(conf2, "\n", conf_exp)
-    print("====cross3の結果====")
-    print(report3)
-    print(conf3, "\n", conf_exp)
-
-    print("broken_precision=", pre_score / 3)
-    print("broken_recall=", re_score / 3)
-    print("broken_f1=", f_score / 3)
-
-    # モデルを保存
-    # model_path = 'model.pth'
-    # torch.save(net.state_dict(), model_path)
+    print("====leave_one_outの結果====")
+    print(report)
+    print(conf, "\n", conf_exp)
+    print("precision : ", pre_score)
+    print("recall : ", re_score)
+    print("f1 : ", f_score)
 
 
 if __name__ == "__main__":
 
-    # train_data_dir = '/home/toui/デスクトップ/ori/add_testUseGan'
-    train_data_dir = '/home/toui/デスクトップ/ori/add_testUse'
+    train_data_dir = '/home/toui/デスクトップ/ori/add_testUseGan2'
+    train_only_path = '/home/toui/デスクトップ/ori/val'
 
     img_save_dir = "/home/toui/PycharmProjects/toui_pytorch/vgg16_bn/img"
 
     weight_pash = "vgg16_bn.pth"
 
-    shutil.rmtree(img_save_dir)
+    if os.path.exists(img_save_dir):
+        shutil.rmtree(img_save_dir)
 
     os.makedirs(img_save_dir, exist_ok=True)
     os.makedirs(os.path.join(img_save_dir, "broken"), exist_ok=True)
