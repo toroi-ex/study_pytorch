@@ -1,0 +1,24 @@
+certifi==2020.6.20
+cycler==0.10.0
+focal-loss-torch==0.0.7
+joblib @ file:///tmp/build/80754af9/joblib_1601912903842/work
+kiwisolver==1.2.0
+matplotlib @ file:///tmp/build/80754af9/matplotlib-base_1592846017414/work
+mkl-fft==1.1.0
+mkl-random==1.1.1
+mkl-service==2.3.0
+numpy==1.18.5
+olefile==0.46
+opencv-python==4.1.2.30
+Pillow==7.1.2
+pyparsing==2.4.7
+python-dateutil==2.8.1
+scikit-learn @ file:///tmp/build/80754af9/scikit-learn_1598376882706/work
+scipy @ file:///tmp/build/80754af9/scipy_1597686620742/work
+six==1.15.0
+threadpoolctl @ file:///tmp/tmp9twdgx9k/threadpoolctl-2.1.0-py3-none-any.whl
+torch==1.4.0
+torchsummary==1.5.1
+torchvision==0.5.0
+tornado==6.0.4
+tqdm @ file:///tmp/build/80754af9/tqdm_1602185206534/work
