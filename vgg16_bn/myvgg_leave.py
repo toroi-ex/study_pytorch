@@ -5,6 +5,7 @@ import shutil
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import LambdaLR, StepLR, ExponentialLR
 
 import torchvision.transforms as transforms
 from torch.utils.data import Subset, TensorDataset
@@ -15,6 +16,8 @@ from vgg16_bn.focalLoss import FocalLoss
 
 from torchsummary import summary
 
+import time
+
 from pathlib import Path
 
 from PIL import Image
@@ -22,7 +25,7 @@ import cv2
 
 import datetime
 
-from sklearn.model_selection import StratifiedKFold, LeaveOneOut
+from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score
 
 # from vgg16_bn.model import vgg16_bn_test
@@ -153,7 +156,7 @@ def main():
 
     #loss function
     # criterion = nn.CrossEntropyLoss()
-    criterion = FocalLoss(alpha=0.65, gamma=2.0) #alpha=0.65,gamma=2
+    criterion = FocalLoss(alpha=0.55, gamma=2.0) #alpha=0.65,gamma=2
 
     for fold_idx, idx in enumerate(kf.split(data_set, label_list)):
 
@@ -170,14 +173,17 @@ def main():
         net.load_state_dict(torch.load(weight_pash), strict=False)
 
         # 最適化
-        optimizer = optim.SGD(net.parameters(), lr=0.001)
+        optimizer = optim.SGD(net.parameters(), lr=0.015)
+        # scheduler1 = LambdaLR(optimizer, lr_lambda=lambda epoch: 0.95 ** epoch)
+        scheduler1 = ExponentialLR(optimizer, gamma=0.95)
+        scheduler2 = StepLR(optimizer, step_size=3, gamma=0.7)
 
         train_idx, valid_idx = idx
 
         #ganをtrainingに加えるためにデータセットを合成
         train_dataset = Subset(data_set, train_idx) + data_set_gan
 
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=32, shuffle=True)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True)
         valid_loader = torch.utils.data.DataLoader(Subset(data_set_val, valid_idx), batch_size=1, shuffle=False)
 
         # trainモードで開始
@@ -235,6 +241,9 @@ def main():
                                     total_loss))
             train_loss_value.append(running_loss / len(train_loader.dataset))  # traindataのlossをグラフ描画のためにlistに保持
             print("train_loss=", running_loss / len(train_loader))
+
+            scheduler1.step()
+            scheduler2.step()
 
         #評価モード
         net.eval()
@@ -312,5 +321,12 @@ if __name__ == "__main__":
 
     device = torch.device("cuda:0")
 
+    time_start = time.time()
+
     main()
+
+    time_end = time.time()
+    tim = time_end - time_start
+
+    print("実行時間は",int(tim//60),"分")
     print("completed")
