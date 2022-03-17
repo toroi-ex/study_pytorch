@@ -138,7 +138,10 @@ class vgg16_bn_test(nn.Module):
 
         #grobal average pooling
         self.classifier = nn.Sequential(
-            nn.Linear(512, 2),
+            # nn.Linear(512, 2),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Linear(256, 2)
         )
 
         # self.classifier = nn.Sequential(

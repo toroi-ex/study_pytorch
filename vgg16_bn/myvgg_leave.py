@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
+import seaborn as sns
 import os
 import shutil
+import re
 
 import torch
 import torch.nn as nn
@@ -17,7 +19,6 @@ from vgg16_bn.focalLoss import FocalLoss
 from torchsummary import summary
 
 import time
-
 from pathlib import Path
 
 from PIL import Image
@@ -28,110 +29,12 @@ import datetime
 from sklearn.model_selection import StratifiedKFold
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score
 
-# from vgg16_bn.model import vgg16_bn_test
-from new_model.model import vgg16_bn_test
+from vgg16_bn.model import vgg16_bn_test
+# from new_model.model import vgg16_bn_test
+from dataload import MyDataset, MyDatasetEval, MydatasetGan, MydatasetMixup
 
 
-class MyDataset(torch.utils.data.Dataset):
-
-    def __init__(self, imageSize, dir_path, transform=None):
-        self.transform = transforms.Compose([
-            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            transforms.RandomHorizontalFlip(0.5),
-            transforms.RandomVerticalFlip(0.5),
-            # transforms.ColorJitter(brightness=0.3, contrast=0.3,),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
-
-        self.image_paths = [str(p) for p in Path(dir_path).glob("**/*.png")]
-
-        self.data_num = len(self.image_paths)
-        self.classes = ['broken', 'correct']
-        self.class_to_idx = {'broken': 1, 'correct': 0}
-
-    def __len__(self):
-        return self.data_num
-
-    def __getitem__(self, idx):
-        p = self.image_paths[idx]
-        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
-
-        if self.transform:
-            out_data = self.transform(image)
-
-        out_label = p.split("/") #フォルダの名前を”/”で分割
-        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
-
-        return out_data, out_label
-
-
-class MyDatasetEval(torch.utils.data.Dataset):
-
-    def __init__(self, imageSize, dir_path, transform=None):
-        self.transform = transforms.Compose([
-            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
-
-        self.image_paths = [str(p) for p in Path(dir_path).glob("**/*.png")]
-
-        self.data_num = len(self.image_paths)
-        self.classes = ['broken', 'correct']
-        self.class_to_idx = {'broken': 1, 'correct': 0}
-
-    def __len__(self):
-        return self.data_num
-
-    def __getitem__(self, idx):
-        p = self.image_paths[idx]
-        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
-
-        if self.transform:
-            out_data = self.transform(image)
-
-        out_label = p.split("/") #フォルダの名前を”/”で分割
-        result_label = out_label[-1]
-        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
-
-        return out_data, out_label, result_label
-
-
-class MydatasetGan(torch.utils.data.Dataset):
-
-    def __init__(self, imageSize, gan_path, transform=None):
-        self.transform = transforms.Compose([
-            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            transforms.RandomHorizontalFlip(0.5),
-            transforms.RandomVerticalFlip(0.5),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
-
-        self.image_paths = [str(p) for p in Path(gan_path).glob("**/*.png")]
-
-        self.data_num = len(self.image_paths)
-        # self.classes = ['broken', 'correct']
-        self.class_to_idx = {'broken': 1}
-
-    def __len__(self):
-        return self.data_num
-
-    def __getitem__(self, idx):
-        p = self.image_paths[idx]
-        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
-
-        if self.transform:
-            out_data = self.transform(image)
-
-        out_label = p.split("/") #フォルダの名前を”/”で分割
-        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
-
-        return out_data, out_label
-
-
-def main():
+def main(epochs):
 
     # training set
     data_set = MyDataset(200, dir_path=train_data_dir)
@@ -152,16 +55,18 @@ def main():
     Y = []
 
     #cross_validation
-    kf = StratifiedKFold(n_splits=len(file_list), shuffle=True, random_state=8)
+    kf = StratifiedKFold(n_splits=len(file_list), shuffle=True)
 
     #loss function
     # criterion = nn.CrossEntropyLoss()
-    criterion = FocalLoss(alpha=0.55, gamma=2.0) #alpha=0.65,gamma=2
+    criterion = FocalLoss(alpha=0.55, gamma=3.0) #alpha=0.65,gamma=2
 
     for fold_idx, idx in enumerate(kf.split(data_set, label_list)):
 
         count += 1
         print(str(count)+" number")
+
+        data_name_list = []
 
         # モデルを構築
         net = vgg16_bn_test()
@@ -175,16 +80,42 @@ def main():
         # 最適化
         optimizer = optim.SGD(net.parameters(), lr=0.015)
         # scheduler1 = LambdaLR(optimizer, lr_lambda=lambda epoch: 0.95 ** epoch)
-        scheduler1 = ExponentialLR(optimizer, gamma=0.95)
-        scheduler2 = StepLR(optimizer, step_size=3, gamma=0.7)
+        scheduler1 = ExponentialLR(optimizer, gamma=0.9)
+        scheduler2 = StepLR(optimizer, step_size=3, gamma=0.75)
 
         train_idx, valid_idx = idx
 
         #ganをtrainingに加えるためにデータセットを合成
-        train_dataset = Subset(data_set, train_idx) + data_set_gan
+        # mixup wo tukawanai baaino yatu
+        # train_dataset = Subset(data_set, train_idx) + data_set_gan
+        #
+        # train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True)
+        # valid_loader = torch.utils.data.DataLoader(Subset(data_set_val, valid_idx), batch_size=1, shuffle=False)
+
+        # mixup wo tukau baaino yatu
+        valid_loader = torch.utils.data.DataLoader(Subset(data_set_val, valid_idx), batch_size=1, shuffle=False)
+        for i in valid_loader:
+            _, _, data_name = i
+            data_name_list.append(data_name[0])
+
+        data_name_list = sorted(data_name_list)
+
+        #mixup image load
+        if 'j' in data_name_list[-1]:
+            mixup_name = re.sub(r"\D", "", data_name_list[-1])
+            mixup_dir = os.path.join(mixup_base_dir, mixup_name)
+
+        else:
+            mixup_dir = os.path.join(mixup_base_dir, "all")
+
+        dataset_mixup = MydatasetMixup(200, mixup_dir)
+
+        train_dataset = Subset(data_set, train_idx) + data_set_gan + dataset_mixup
+        # train_dataset = Subset(data_set, train_idx) + data_set_gan
+        # train_dataset = Subset(data_set, train_idx)
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True)
-        valid_loader = torch.utils.data.DataLoader(Subset(data_set_val, valid_idx), batch_size=1, shuffle=False)
+
 
         # trainモードで開始
         net.train()
@@ -195,7 +126,9 @@ def main():
         train_loss_value = []  # trainingのlossを保持するlist
         train_acc_value = []  # trainingのaccuracyを保持するlist
 
-        for epoch in range(25):
+        s1, s2, lr = [], [], []
+
+        for epoch in range(epochs):
             print("epoch =", epoch + 1)
 
             # 今回の学習効果を保存するための変数
@@ -225,6 +158,7 @@ def main():
                 loss.backward()
                 optimizer.step()
 
+
                 input_num += len(inputs)
 
             #     if batch_idx % 1 == 0:
@@ -242,8 +176,20 @@ def main():
             train_loss_value.append(running_loss / len(train_loader.dataset))  # traindataのlossをグラフ描画のためにlistに保持
             print("train_loss=", running_loss / len(train_loader))
 
-            scheduler1.step()
-            scheduler2.step()
+            for param_group in optimizer.param_groups:
+                lr.append(param_group['lr'])
+
+                scheduler1.step()
+                scheduler2.step()
+                s1.append(scheduler1.get_last_lr()[0])
+                s2.append(scheduler2.get_last_lr()[0])
+
+        # plt.plot(s1, label='StepLR (scheduler1)')
+        # plt.plot(s2, label='ExponentialLR (scheduler2)')
+        # plt.plot(lr, label='Learning Rate')
+        # plt.xlim(-5, 40)
+        # plt.legend()
+        # plt.show()
 
         #評価モード
         net.eval()
@@ -305,12 +251,18 @@ def main():
 
 if __name__ == "__main__":
 
-    train_data_dir = '/home/toui/デスクトップ/ori/add_testUseGan2'
+    # train_data_dir = "/home/toui/デスクトップ/ori/NoGan_training"
+    train_data_dir = '/home/toui/デスクトップ/ori/RealUseGan' # mixup 使うとき
     train_only_path = '/home/toui/デスクトップ/ori/val'
+
+    mixup_base_dir = "/home/toui/デスクトップ/ori/mixup_train/0.6"
+    #mixup_base_dir = "/home/toui/デスクトップ/ori/mixup_train2_7"
 
     img_save_dir = "/home/toui/PycharmProjects/toui_pytorch/vgg16_bn/img"
 
     weight_pash = "vgg16_bn.pth"
+
+    epochs = 20
 
     if os.path.exists(img_save_dir):
         shutil.rmtree(img_save_dir)
@@ -323,7 +275,7 @@ if __name__ == "__main__":
 
     time_start = time.time()
 
-    main()
+    main(epochs)
 
     time_end = time.time()
     tim = time_end - time_start

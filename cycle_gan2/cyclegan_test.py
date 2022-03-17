@@ -113,8 +113,7 @@ def test(fold_name1, fold_name2):
             file_name1 = file_path1[0].replace("(","").replace("'","").replace(")","").replace(",","")
             file_name2 = file_path2[0].replace("(","").replace("'","").replace(")","").replace(",","")
 
-            image_name = [file_name1[:-4] + '-' + file_name2,
-                          file_name2[:-4] + '-' + file_name1]
+            image_name = ["ori_"+file_name2, "ori_"+file_name1]
             print(image_name)
 
             fake_image1 = G1(image2)
@@ -135,18 +134,26 @@ if __name__ == '__main__':
     pretrained_model_file_name_list = ['G1_B4', 'G2_B4', 'D1_B4', 'D2_B4']
 
     save_img = True  # ネットワークによる生成画像を保存するかどうかのフラグ
+
+    # power device
     # project_root = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/result/'
     # train_data_dir = '/home/toui/デスクトップ/ori/gan_test_img'
-
     # result_dir = '/home/toui/デスクトップ/ori/cyclegan_result'
-
-    project_root = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/sensei_help/training_result'
-    train_data_dir = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/sensei_help/test'
-    result_dir = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/sensei_help/result'
-
-    print("flie read conplete : ", train_data_dir)
-
     # test("broken_03", "broken_06")
+
+    # # sankyu
+    project_root = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/sensei_help/training_result'
+    train_data_dir = '/home/toui/デスクトップ/sankyu/input'
+    result_dir = '/home/toui/デスクトップ/sankyu/output'
     test("img", "img1")
+
+    # cell
+    # dir_class_list = ["bright", "cytoplasm", "merged", "nucleus"]
+    # dir_class = "/"+dir_class_list[0]
+    # project_root = "/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/cell/training_result" + dir_class
+    # train_data_dir = "/home/toui/デスクトップ/cell_gan/input" + dir_class
+    # result_dir = "/home/toui/デスクトップ/cell_gan/output" + dir_class
+    # test("HL", "MCF")
+
 
     print("test complete")

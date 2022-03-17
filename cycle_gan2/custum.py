@@ -19,26 +19,29 @@ def blur(img):
 
 data_transforms = transforms.Compose([
     transforms.Resize((256, 256), interpolation=Image.BILINEAR),
-    transforms.ColorJitter(brightness=0.05, contrast=0.05, saturation=0.05, hue=0.05),
+    # transforms.Resize((150, 150), interpolation=Image.BILINEAR),
+    # transforms.ColorJitter(brightness=0.05, contrast=0.05, saturation=0.05, hue=0.05),
     transforms.RandomHorizontalFlip(0.5),
     transforms.RandomVerticalFlip(0.5),
     # transforms.Lambda(blur),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
 ])
 
 data_val_transforms = transforms.Compose([
     transforms.Resize((256, 256), interpolation=Image.BILINEAR),
+    # transforms.Resize((150, 150), interpolation=Image.BILINEAR),
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,)),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
 
 class CustomDataset(torch.utils.data.Dataset):
 
     #１番目のクラスを２番めのクラスに近づけようとしてる 逆もしてる
-    classes = ["broken_03", "broken_06"]
-    # classes = ["img", "img1"]
+    # classes = ["broken_03", "broken_06"]
+    classes = ["img", "img1"]
+    # classes = ["HL", "MCF"]
 
     def __init__(self, root, fold1, fold2, transform=None):
 
@@ -61,10 +64,18 @@ class CustomDataset(torch.utils.data.Dataset):
         # images_b0 = sorted(images_b0)
 
         len_images = int(len(images_a0))
+        len_images_b = int(len(images_b0))
 
-        for i in range(len_images):
-            self.images_a.append(os.path.join(root_a_path, images_a0[i]))
-            self.images_b.append(os.path.join(root_b_path, images_b0[i]))
+        for i in range(len_images_b):
+            try:
+                self.images_a.append(os.path.join(root_a_path, images_a0[i]))
+                self.images_b.append(os.path.join(root_b_path, images_b0[i]))
+            except:
+                #x_b = random.randint(0, len_images_b-1)
+                #self.images_b.append(os.path.join(root_b_path, images_b0[x_b]))
+                x_a = random.randint(0, len_images - 1)
+                self.images_a.append(os.path.join(root_a_path, images_a0[x_a]))
+                self.images_b.append(os.path.join(root_b_path, images_b0[i]))
 
     def __getitem__(self, index):
 
@@ -74,11 +85,13 @@ class CustomDataset(torch.utils.data.Dataset):
         file_name1 = os.path.basename(image_a_path)
         file_name2 = os.path.basename(image_b_path)
 
-        # img_a = Image.open(image_a_path).convert('RGB')
-        # img_b = Image.open(image_b_path).convert('RGB')
+        #power device
+        img_a = Image.open(image_a_path).convert('RGB')
+        img_b = Image.open(image_b_path).convert('RGB')
 
-        img_a = Image.open(image_a_path)
-        img_b = Image.open(image_b_path)
+        # other images
+        # img_a = Image.open(image_a_path)
+        # img_b = Image.open(image_b_path)
 
         # クロップ位置を乱数で決定
         # i, j, h, w = transforms.RandomCrop.get_params(img_a, output_size=(256, 256))

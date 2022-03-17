@@ -1,7 +1,6 @@
-import os
-import torch
+
 import torch.nn as nn
-import torch.nn.functional as F
+
 
 
 class vgg16_bn_test(nn.Module):
@@ -66,6 +65,7 @@ class vgg16_bn_test(nn.Module):
         # grobal average pooling
         self.classifier = nn.Sequential(
             nn.Linear(512, 256),
+            nn.ReLU(),
             nn.Linear(256, 2)
         )
 

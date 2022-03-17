@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import os
 import shutil
+import re
 
 import torch
 import torch.nn as nn
@@ -26,107 +27,11 @@ import datetime
 from sklearn.model_selection import StratifiedKFold, LeaveOneOut
 from sklearn.metrics import classification_report, confusion_matrix, f1_score, precision_score, recall_score
 
-
-class MyDataset(torch.utils.data.Dataset):
-
-    def __init__(self, imageSize, dir_path, transform=None):
-        self.transform = transforms.Compose([
-            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            transforms.RandomHorizontalFlip(0.5),
-            transforms.RandomVerticalFlip(0.5),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
-        ])
-
-        self.image_paths = [str(p) for p in Path(dir_path).glob("**/*.png")]
-
-        self.data_num = len(self.image_paths)
-        self.classes = ['broken', 'correct']
-        self.class_to_idx = {'broken': 1, 'correct': 0}
-
-    def __len__(self):
-        return self.data_num
-
-    def __getitem__(self, idx):
-        p = self.image_paths[idx]
-        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
-
-        if self.transform:
-            out_data = self.transform(image)
-
-        out_label = p.split("/") #フォルダの名前を”/”で分割
-        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
-
-        return out_data, out_label
+from dataload import MyDataset, MyDatasetEval, MydatasetGan, MydatasetMixup
 
 
-class MyDatasetEval(torch.utils.data.Dataset):
 
-    def __init__(self, imageSize, dir_path, transform=None):
-        self.transform = transforms.Compose([
-            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
-        ])
-
-        self.image_paths = [str(p) for p in Path(dir_path).glob("**/*.png")]
-
-        self.data_num = len(self.image_paths)
-        self.classes = ['broken', 'correct']
-        self.class_to_idx = {'broken': 1, 'correct': 0}
-
-    def __len__(self):
-        return self.data_num
-
-    def __getitem__(self, idx):
-        p = self.image_paths[idx]
-        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
-
-        if self.transform:
-            out_data = self.transform(image)
-
-        out_label = p.split("/") #フォルダの名前を”/”で分割
-        result_label = out_label[-1]
-        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
-
-        return out_data, out_label, result_label
-
-
-class MydatasetGan(torch.utils.data.Dataset):
-
-    def __init__(self, imageSize, gan_path, transform=None):
-        self.transform = transforms.Compose([
-            transforms.Resize(imageSize, interpolation=Image.BILINEAR),
-            transforms.RandomHorizontalFlip(0.5),
-            transforms.RandomVerticalFlip(0.5),
-            transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)),
-        ])
-
-        self.image_paths = [str(p) for p in Path(gan_path).glob("**/*.png")]
-
-        self.data_num = len(self.image_paths)
-        # self.classes = ['broken', 'correct']
-        # self.class_to_idx = {'broken': 1, 'correct': 0}
-        self.class_to_idx = {'broken': 1}
-
-    def __len__(self):
-        return self.data_num
-
-    def __getitem__(self, idx):
-        p = self.image_paths[idx]
-        image = Image.open(p).convert('RGB') #画像をRGBに変換することで、3チャネルにする
-
-        if self.transform:
-            out_data = self.transform(image)
-
-        out_label = p.split("/") #フォルダの名前を”/”で分割
-        out_label = self.class_to_idx[out_label[-2]] #後ろから2番めの値を取ってくる（”correct or broken”）
-
-        return out_data, out_label
-
-
-def main():
+def main(epochs, mode):
 
     # training set
     data_set = MyDataset(200, dir_path=train_data_dir)
@@ -146,6 +51,7 @@ def main():
 
     #cross_validation
     kf = StratifiedKFold(n_splits=len(file_list), shuffle=True)
+    count = 0
 
     #loss function
     criterion = nn.CrossEntropyLoss()
@@ -153,19 +59,24 @@ def main():
 
     for fold_idx, idx in enumerate(kf.split(data_set, label_list)):
 
-        # モデルを構築
-        # net = models.vgg16(pretrained=True)
-        net = models.resnet34(pretrained=True)
+        data_name_list = []
+        count+=1
+        print(str(count)+"number")
+
+        if mode == "vgg16":
+            net = models.vgg16(pretrained=True)
+
+            # vgg16の全結合
+            num_ftrs = net.classifier[6].in_features
+            net.classifier[6] = nn.Linear(num_ftrs, 2)
+
+        elif mode == "resnet":
+            net = models.resnet34(pretrained=True)
+
+            num_ftrs = net.fc.in_features
+            net.fc = nn.Linear(num_ftrs, 2)
 
         print("ネットワーク設定完了：学習をtrainモードで開始します")
-
-        #vgg16の全結合
-        # num_ftrs = net.classifier[6].in_features
-        # net.classifier[6] = nn.Linear(num_ftrs, 2)
-
-        #resnetの全結合
-        num_ftrs = net.fc.in_features
-        net.fc = nn.Linear(num_ftrs, 2)
 
         net.to(device)
 
@@ -174,8 +85,28 @@ def main():
 
         train_idx, valid_idx = idx
 
+        # mixup wo tukau baaino yatu
+        valid_loader = torch.utils.data.DataLoader(Subset(data_set_val, valid_idx), batch_size=1, shuffle=False)
+        for i in valid_loader:
+            _, _, data_name = i
+            data_name_list.append(data_name[0])
+
+        data_name_list = sorted(data_name_list)
+
+        #mixup image load
+        if 'j' in data_name_list[-1]:
+            mixup_name = re.sub(r"\D", "", data_name_list[-1])
+            mixup_dir = os.path.join(mixup_base_dir, mixup_name)
+
+        else:
+            mixup_dir = os.path.join(mixup_base_dir, "all")
+
+        dataset_mixup = MydatasetMixup(200, mixup_dir)
+
+        train_dataset = Subset(data_set, train_idx)# + data_set_gan + dataset_mixup
+
         #ganをtrainingに加えるためにデータセットを合成
-        train_dataset = Subset(data_set, train_idx) + data_set_gan
+        # train_dataset = Subset(data_set, train_idx) + data_set_gan
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True)
         valid_loader = torch.utils.data.DataLoader(Subset(data_set_val, valid_idx), batch_size=1, shuffle=False)
@@ -184,12 +115,12 @@ def main():
         net.train()
 
         # modelの全体像を表示
-        summary(net, input_size=(3, 200, 200))
+        # summary(net, input_size=(3, 200, 200))
 
         train_loss_value = []  # trainingのlossを保持するlist
         train_acc_value = []  # trainingのaccuracyを保持するlist
 
-        for epoch in range(13):
+        for epoch in range(epochs):
             print("epoch =", epoch + 1)
 
             # 今回の学習効果を保存するための変数
@@ -296,12 +227,14 @@ def main():
 
 if __name__ == "__main__":
 
-    train_data_dir = '/home/toui/デスクトップ/ori/add_testUseGan2'
+    train_data_dir = '/home/toui/デスクトップ/ori/RealUseGan'
     train_only_path = '/home/toui/デスクトップ/ori/val'
+
+    mixup_base_dir = "/home/toui/デスクトップ/ori/mixup_train/0.6"
 
     img_save_dir = "/home/toui/PycharmProjects/toui_pytorch/compare/img"
 
-    weight_pash = "vgg16_bn.pth"
+    epochs = 6
 
     if os.path.exists(img_save_dir):
         shutil.rmtree(img_save_dir)
@@ -312,5 +245,6 @@ if __name__ == "__main__":
 
     device = torch.device("cuda:0")
 
-    main()
+    # vgg16 or resnet
+    main(epochs, "resnet")
     print("completed")

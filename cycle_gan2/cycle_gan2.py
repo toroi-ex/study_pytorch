@@ -57,10 +57,16 @@ def main(fold_name1, fold_name2):
 
     print("GPU:",device)
 
-    G1 = model_init(Generator, 3, 3, project_root + pretrained_model_file_name_list[0] + '.pth', device)
-    G2 = model_init(Generator, 3, 3, project_root + pretrained_model_file_name_list[1] + '.pth', device)
-    D1 = model_init(Discriminator, 3, 64, project_root + pretrained_model_file_name_list[2] + '.pth', device)
-    D2 = model_init(Discriminator, 3, 64, project_root + pretrained_model_file_name_list[3] + '.pth', device)
+    if pretrained:
+        G1 = model_init(Generator, 3, 3, pretrained_model_file_name_list[0] + '.pth', device)
+        G2 = model_init(Generator, 3, 3, pretrained_model_file_name_list[1] + '.pth', device)
+        D1 = model_init(Discriminator, 3, 64, pretrained_model_file_name_list[2] + '.pth', device)
+        D2 = model_init(Discriminator, 3, 64, pretrained_model_file_name_list[3] + '.pth', device)
+    else:
+        G1 = model_init(Generator, 3, 3, project_root + pretrained_model_file_name_list[0] + '.pth', device)
+        G2 = model_init(Generator, 3, 3, project_root + pretrained_model_file_name_list[1] + '.pth', device)
+        D1 = model_init(Discriminator, 3, 64, project_root + pretrained_model_file_name_list[2] + '.pth', device)
+        D2 = model_init(Discriminator, 3, 64, project_root + pretrained_model_file_name_list[3] + '.pth', device)
 
     L1Loss = nn.L1Loss()
     MSELoss = nn.MSELoss()
@@ -194,23 +200,37 @@ def main(fold_name1, fold_name2):
 
 if __name__ == '__main__':
     beta1 = 0.5
-    cycle_late = 3  # L1LossとadversarilLossの重要度を決定する係数
+    cycle_late = 1  # L1LossとadversarilLossの重要度を決定する係数
     num_epochs = 20  # エポック数 5の場合は8 1の場合は10
     batch_size = 1  # バッチサイズ
     learning_rate = 1e-4  # 学習率
-    pretrained = False  # 事前に学習したモデルがあるならそれを使う
-    pretrained_model_file_name_list = ['G1_B4', 'G2_B4', 'D1_B4', 'D2_B4']
+    pretrained = True  # 事前に学習したモデルがあるならそれを使う
+    # pretrained_model_file_name_list = ['G1_B4', 'G2_B4', 'D1_B4', 'D2_B4']
+    pretrained_model_file_name_list = ['/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/result/G1_B4',
+                                       '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/result/G2_B4',
+                                       '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/result/D1_B4',
+                                       '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/result/D2_B4']
     output_model_file_name_list = ['G1_B4', 'G2_B4', 'D1_B4', 'D2_B4']
     save_img = True  # ネットワークによる生成画像を保存するかどうかのフラグ
 
-    # project_root = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/result/'
+    #powoer device
+    # project_root = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/result'
     # train_data_dir = '/home/toui/デスクトップ/ori/add_data_gan/broken_mix'
-
-    project_root = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/sensei_help/training_result'
-    train_data_dir = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/sensei_help'
-
-    print("flie read conplete")
-
     # main("broken_03", "broken_06")
+
+    #sankyu
+    project_root = '/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/sensei_help/training_result'
+    train_data_dir = '/home/toui/デスクトップ/sankyu/input'
     main("img", "img1")
+
+
+
+
+    #cell
+    # dir_class_list = ["bright", "cytoplasm", "merged", "nucleus"]
+    # dir_class = "/"+dir_class_list[3]
+    # project_root="/home/toui/PycharmProjects/toui_pytorch/cycle_gan2/cell/training_result" + dir_class
+    # train_data_dir="/home/toui/デスクトップ/cell_gan/input" + dir_class
+    # main("HL", "MCF")
+
     print("train complete")
